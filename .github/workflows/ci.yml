@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Node / TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Node project
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No package.json — skipping Node checks (expected for an empty scaffold)."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.present == 'true'
+        with:
+          node-version: 20
+
+      - name: Install
+        if: steps.detect.outputs.present == 'true'
+        run: npm ci || npm install
+
+      - name: Lint
+        if: steps.detect.outputs.present == 'true'
+        run: npm run lint --if-present
+
+      - name: Typecheck
+        if: steps.detect.outputs.present == 'true'
+        run: npm run typecheck --if-present
+
+      - name: Test
+        if: steps.detect.outputs.present == 'true'
+        run: npm test --if-present
+
+      - name: Build
+        if: steps.detect.outputs.present == 'true'
+        run: npm run build --if-present
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Python project
+        id: detect
+        run: |
+          if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No pyproject.toml / requirements.txt — skipping Python checks (expected for an empty scaffold)."
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.detect.outputs.present == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Install tooling
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e . || true; fi
+
+      - name: Lint (ruff)
+        if: steps.detect.outputs.present == 'true'
+        run: ruff check .
+
+      - name: Test (pytest)
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          set +e
+          pytest -q
+          code=$?
+          set -e
+          # exit 5 = "no tests collected" — fine for an empty scaffold
+          if [ "$code" = "0" ] || [ "$code" = "5" ]; then
+            echo "Python tests OK (exit $code)."
+            exit 0
+          fi
+          exit $code
