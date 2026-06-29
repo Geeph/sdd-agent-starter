@@ -1,7 +1,7 @@
 name: PR hygiene
 
-# Turns one AGENTS.md rule into an actual gate: every PR description must link an Issue.
-# (Runs only on PRs, so it never blocks the empty scaffold.)
+# Validates the required PR template fields. Add the job name below to the main ruleset's
+# required status checks so these repository rules are an actual merge gate.
 
 on:
   pull_request:
@@ -15,14 +15,65 @@ jobs:
     name: PR links an Issue
     runs-on: ubuntu-latest
     steps:
-      - name: Require a linked Issue
+      - name: Validate PR description
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |
           # Pass the body via env (never inline) to avoid script injection.
-          if printf '%s' "$BODY" | grep -Eiq '(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]+#[0-9]+'; then
-            echo "Linked Issue found."
-          else
-            echo "::error::PR description must link an Issue (e.g. 'Closes #12'). See AGENTS.md and the PR template."
-            exit 1
-          fi
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          body = os.environ.get("BODY", "")
+          errors = []
+
+          closing = (
+              r"\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)"
+              r"\s+#[0-9]+\b"
+          )
+          if not re.search(closing, body, re.IGNORECASE):
+              errors.append("Link an Issue with a closing keyword, for example: Closes #12")
+
+          required_sections = (
+              "What was implemented",
+              "Test results",
+              "Not done / known gaps",
+              "Risks or assumptions",
+          )
+          for title in required_sections:
+              match = re.search(
+                  rf"^##\s+{re.escape(title)}\s*$\n(.*?)(?=^##\s+|^---\s*$|\Z)",
+                  body,
+                  re.IGNORECASE | re.MULTILINE | re.DOTALL,
+              )
+              content = match.group(1) if match else ""
+              content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL).strip(" \t\r\n-")
+              if not content:
+                  errors.append(f"Fill in the '{title}' section")
+
+          def model(name: str) -> str:
+              match = re.search(
+                  rf"^\s*-\s*\*\*{name} model:\*\*\s*(.*?)\s*$",
+                  body,
+                  re.IGNORECASE | re.MULTILINE,
+              )
+              value = match.group(1) if match else ""
+              return re.sub(r"<!--.*?-->", "", value).strip()
+
+          author = model("Author")
+          reviewer = model("Reviewer")
+          if not author:
+              errors.append("Set the Author model")
+          if not reviewer:
+              errors.append("Set the Reviewer model")
+          if author and reviewer and author.casefold() == reviewer.casefold():
+              errors.append("Reviewer model must differ from Author model")
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+
+          print("PR description satisfies AGENTS.md.")
+          PY

@@ -8,9 +8,8 @@ on:
 permissions:
   contents: read
 
-# Green on an empty scaffold: each job SKIPS when its stack is absent. But once a stack is
-# present, checks run for real and FAIL on error — nothing is swallowed. A present stack that
-# defines none of lint/typecheck/test/build fails, so CI can never "check nothing".
+# Green on an empty scaffold: each job skips when its stack is absent. Once a stack is present,
+# all required checks run and fail on error. Node checks both the root app and prototype/.
 
 jobs:
   node:
@@ -22,11 +21,11 @@ jobs:
       - name: Detect Node project
         id: detect
         run: |
-          if [ -f package.json ]; then
+          if [ -f package.json ] || [ -f prototype/package.json ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "No package.json — skipping Node checks (expected for an empty scaffold)."
+            echo "No root or prototype/package.json — skipping Node checks."
           fi
 
       - uses: actions/setup-node@v4
@@ -37,43 +36,58 @@ jobs:
       - name: Install (deterministic)
         if: steps.detect.outputs.present == 'true'
         run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            npm ci
-          else
-            echo "No lockfile — using 'npm install'. Commit a lockfile for reproducible CI."
-            npm install
-          fi
+          for dir in . prototype; do
+            [ -f "$dir/package.json" ] || continue
+            if [ ! -f "$dir/package-lock.json" ] && [ ! -f "$dir/npm-shrinkwrap.json" ]; then
+              echo "::error file=$dir/package.json::Commit a lockfile so CI is reproducible."
+              exit 1
+            fi
+            npm --prefix "$dir" ci
+          done
 
-      - name: Require at least one check to be defined
+      - name: Require scripts to be defined
         if: steps.detect.outputs.present == 'true'
         run: |
+          # Root app: all four checks. prototype/ is throwaway for the design gate, so it only
+          # needs to build (lint/typecheck/test are not required of it). One node process so the
+          # exit code is unambiguous regardless of shell errexit.
           node -e '
-            const s = (require("./package.json").scripts) || {};
-            const want = ["lint", "typecheck", "test", "build"];
-            const have = want.filter((k) => s[k]);
-            if (have.length === 0) {
-              console.error("This Node project defines none of: " + want.join(", ") +
-                " — CI would check nothing. Define at least a test or build script (see AGENTS.md).");
-              process.exit(1);
+            const fs = require("fs");
+            const errors = [];
+            if (fs.existsSync("package.json")) {
+              const s = require("./package.json").scripts || {};
+              const missing = ["lint", "typecheck", "test", "build"].filter((n) => !s[n]);
+              if (missing.length) errors.push("Root package.json missing required scripts: " + missing.join(", "));
             }
-            console.log("Checks defined: " + have.join(", "));
+            if (fs.existsSync("prototype/package.json")) {
+              const s = require("./prototype/package.json").scripts || {};
+              if (!s.build) errors.push("prototype/package.json must define a build script");
+            }
+            if (errors.length) { errors.forEach((e) => console.error(e)); process.exit(1); }
           '
 
-      - name: Lint
+      - name: Lint (root)
         if: steps.detect.outputs.present == 'true'
-        run: npm run lint --if-present
+        run: |
+          if [ -f package.json ]; then npm run lint; fi
 
-      - name: Typecheck
+      - name: Typecheck (root)
         if: steps.detect.outputs.present == 'true'
-        run: npm run typecheck --if-present
+        run: |
+          if [ -f package.json ]; then npm run typecheck; fi
 
-      - name: Test
+      - name: Test (root)
         if: steps.detect.outputs.present == 'true'
-        run: npm test --if-present
+        run: |
+          if [ -f package.json ]; then npm test; fi
 
-      - name: Build
+      - name: Build (root + prototype)
         if: steps.detect.outputs.present == 'true'
-        run: npm run build --if-present
+        run: |
+          for dir in . prototype; do
+            [ -f "$dir/package.json" ] || continue
+            npm --prefix "$dir" run build
+          done
 
   python:
     name: Python
@@ -100,7 +114,7 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest
+          pip install build mypy pytest ruff
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           # Editable install only when pyproject declares a real package (not just tool config).
           if [ -f pyproject.toml ] && grep -Eq '^\[(build-system|project)\]' pyproject.toml; then
@@ -111,27 +125,20 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         run: ruff check .
 
-      - name: Typecheck (mypy, if configured)
+      - name: Typecheck (mypy)
         if: steps.detect.outputs.present == 'true'
-        run: |
-          if [ -f mypy.ini ] || [ -f .mypy.ini ] || grep -Eqs '^\[tool\.mypy\]' pyproject.toml; then
-            pip install mypy
-            mypy .
-          else
-            echo "No mypy config — skipping typecheck. Add [tool.mypy] (or mypy.ini) to enable."
-          fi
+        run: mypy .
 
       - name: Test (pytest)
         if: steps.detect.outputs.present == 'true'
+        run: pytest -q
+
+      - name: Build / package validation
+        if: steps.detect.outputs.present == 'true'
         run: |
-          set +e
-          pytest -q
-          code=$?
-          set -e
-          # exit 5 = "no tests collected" — allowed only while a project is still being
-          # scaffolded. Once you have code, add tests; AGENTS.md requires tests before "done".
-          if [ "$code" = "0" ] || [ "$code" = "5" ]; then
-            echo "Python tests OK (exit $code)."
-            exit 0
+          if [ -f pyproject.toml ] && grep -Eq '^\[(build-system|project)\]' pyproject.toml; then
+            python -m build
+          else
+            # requirements.txt-only applications have no package artifact to build.
+            python -m compileall -q .
           fi
-          exit $code
