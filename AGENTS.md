@@ -60,7 +60,8 @@ deliverables and one extra gate change.
     link itself — open it on a phone. No deploy or CI needed for the design gate.
   - **Code prototype** (agent-generated UI): build it under `prototype/`. Because it is code,
     it is a normal tracked task — its own Issue + light plan first. Its preview is a deployed
-    URL (`.github/workflows/preview.yml`, or Vercel/Cloudflare for per-PR URLs).
+    URL. The built-in GitHub Pages workflow deploys after the prototype PR merges to `main`;
+    use Vercel/Cloudflare only when the design gate must happen before that merge.
 - **Design tokens** (colour / spacing / type) live in one place (`design/tokens/` or the
   prototype's token module). No magic values scattered across components.
 - Roles unchanged: Commander writes `design.md`; an executor builds any code prototype;
@@ -70,7 +71,7 @@ deliverables and one extra gate change.
 
 Open one PR per task, using the PR template (`.github/pull_request_template.md`). It MUST contain:
 
-- Linked Issue (`Closes #<n>`) — enforced by the `pr-hygiene` check
+- Linked Issue (`Closes #<n>`) — validated by the required `pr-hygiene` check
 - What was implemented
 - Test results
 - Anything not done / known gaps
@@ -81,12 +82,12 @@ Never push directly to `main`. `main` requires a PR with green CI and human appr
 
 ## Gates (cheapest first)
 
-1. **Spec gate (human):** spec/plan is reviewed *before* any code or design. Cheapest place to
-   catch errors — take it seriously.
+1. **Spec gate (human):** review `spec.md` before design starts, and review the relevant
+   `plan.md` before code starts. Cheapest place to catch errors — take it seriously.
 2. **Design gate (human — design track only):** review `design.md` + the Figma link (or the code
    prototype's live preview) *before* writing production code. Same logic as the spec gate.
 3. **CI gate (automated):** lint / typecheck / test / build must be green. CI skips a stack that
-   is absent, but a present stack that defines no checks fails — it must not "check nothing".
+   is absent; once present, all four checks are required and must pass.
 4. **Review gate:** independent agent review (reviewer ≠ author), then human approval on the PR.
 
 ## Honesty
