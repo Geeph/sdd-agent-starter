@@ -45,50 +45,43 @@ jobs:
             npm --prefix "$dir" ci
           done
 
-      - name: Require all checks to be defined
+      - name: Require scripts to be defined
         if: steps.detect.outputs.present == 'true'
         run: |
-          for dir in . prototype; do
-            [ -f "$dir/package.json" ] || continue
-            (
-              cd "$dir"
-              node -e '
-                const scripts = require("./package.json").scripts || {};
-                const required = ["lint", "typecheck", "test", "build"];
-                const missing = required.filter((name) => !scripts[name]);
-                if (missing.length) {
-                  console.error("Missing required scripts: " + missing.join(", "));
-                  process.exit(1);
-                }
-              '
-            )
-          done
+          # Root app: all four checks. prototype/ is throwaway for the design gate, so it only
+          # needs to build (lint/typecheck/test are not required of it). One node process so the
+          # exit code is unambiguous regardless of shell errexit.
+          node -e '
+            const fs = require("fs");
+            const errors = [];
+            if (fs.existsSync("package.json")) {
+              const s = require("./package.json").scripts || {};
+              const missing = ["lint", "typecheck", "test", "build"].filter((n) => !s[n]);
+              if (missing.length) errors.push("Root package.json missing required scripts: " + missing.join(", "));
+            }
+            if (fs.existsSync("prototype/package.json")) {
+              const s = require("./prototype/package.json").scripts || {};
+              if (!s.build) errors.push("prototype/package.json must define a build script");
+            }
+            if (errors.length) { errors.forEach((e) => console.error(e)); process.exit(1); }
+          '
 
-      - name: Lint
+      - name: Lint (root)
         if: steps.detect.outputs.present == 'true'
         run: |
-          for dir in . prototype; do
-            [ -f "$dir/package.json" ] || continue
-            npm --prefix "$dir" run lint
-          done
+          if [ -f package.json ]; then npm run lint; fi
 
-      - name: Typecheck
+      - name: Typecheck (root)
         if: steps.detect.outputs.present == 'true'
         run: |
-          for dir in . prototype; do
-            [ -f "$dir/package.json" ] || continue
-            npm --prefix "$dir" run typecheck
-          done
+          if [ -f package.json ]; then npm run typecheck; fi
 
-      - name: Test
+      - name: Test (root)
         if: steps.detect.outputs.present == 'true'
         run: |
-          for dir in . prototype; do
-            [ -f "$dir/package.json" ] || continue
-            npm --prefix "$dir" test
-          done
+          if [ -f package.json ]; then npm test; fi
 
-      - name: Build
+      - name: Build (root + prototype)
         if: steps.detect.outputs.present == 'true'
         run: |
           for dir in . prototype; do

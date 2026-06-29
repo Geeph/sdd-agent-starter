@@ -109,3 +109,29 @@ Use this whenever there's UI to settle before committing to full code.
       prototype, enable GitHub Pages (Source: *GitHub Actions*) or connect Vercel / Cloudflare
       and add the token via `gh secret set`.
 - [ ] Make `PR links an Issue` a **required** check in the `main` ruleset.
+
+## Strict CI — bootstrapping a project
+
+CI is green on the empty scaffold, but once a stack is present it is **strict**: the root app
+must define and pass all four checks (a code `prototype/` only needs to build). Make the *first*
+task of a new project a toolchain-setup Issue so later PRs can go green.
+
+**Node (root app)** — define all four scripts in `package.json` and commit a lockfile:
+
+```json
+{
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc -p ."
+  }
+}
+```
+
+Add at least one smoke test so `test` is real. `prototype/` only needs a `build` script + lockfile.
+
+**Python** — ship at least one test (so `pytest` doesn't exit 5), keep the included `mypy.ini`
+(`ignore_missing_imports`, tighten as needed), and either declare `[build-system]`/`[project]`
+in `pyproject.toml` (built with `python -m build`) or rely on `compileall` for
+requirements-only apps.

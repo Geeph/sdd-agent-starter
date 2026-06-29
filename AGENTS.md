@@ -87,7 +87,8 @@ Never push directly to `main`. `main` requires a PR with green CI and human appr
 2. **Design gate (human — design track only):** review `design.md` + the Figma link (or the code
    prototype's live preview) *before* writing production code. Same logic as the spec gate.
 3. **CI gate (automated):** lint / typecheck / test / build must be green. CI skips a stack that
-   is absent; once present, all four checks are required and must pass.
+   is absent; once present, the root app must pass all four. A code `prototype/` only needs to
+   build (it is throwaway for the design gate).
 4. **Review gate:** independent agent review (reviewer ≠ author), then human approval on the PR.
 
 ## Honesty
