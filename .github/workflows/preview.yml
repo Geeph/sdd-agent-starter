@@ -1,8 +1,9 @@
 name: Preview
 
-# Preview deploy for the design/prototype track (Scenario 2/3).
-# Builds prototype/ and (on main) publishes it to GitHub Pages — a URL you can open on your
-# phone. No secrets required. For per-PR preview URLs, swap the deploy job for Vercel or
+# OPTIONAL — only for the code-prototype path (agent-generated UI). With Figma-based design,
+# the "preview" is just the Figma share link (see AGENTS.md) and you do not need this file.
+# When a prototype/ exists, this builds it and publishes from main to GitHub Pages — a shared
+# URL you can open on your phone. For per-PR live URLs, swap the deploy job for Vercel or
 # Cloudflare Pages (see README) and add the token via `gh secret set`.
 # Skips and stays green until a prototype/ actually exists.
 
@@ -37,7 +38,7 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "No prototype/ — skipping preview (expected until a prototype exists)."
+            echo "No prototype/ — skipping preview (expected; Figma designs need no deploy)."
           fi
 
       - uses: actions/setup-node@v4
@@ -49,7 +50,7 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         working-directory: prototype
         run: |
-          npm ci || npm install
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci; else npm install; fi
           npm run build --if-present
 
       - name: Upload Pages artifact

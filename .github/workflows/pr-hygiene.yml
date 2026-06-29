@@ -1,0 +1,28 @@
+name: PR hygiene
+
+# Turns one AGENTS.md rule into an actual gate: every PR description must link an Issue.
+# (Runs only on PRs, so it never blocks the empty scaffold.)
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  description:
+    name: PR links an Issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a linked Issue
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Pass the body via env (never inline) to avoid script injection.
+          if printf '%s' "$BODY" | grep -Eiq '(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]+#[0-9]+'; then
+            echo "Linked Issue found."
+          else
+            echo "::error::PR description must link an Issue (e.g. 'Closes #12'). See AGENTS.md and the PR template."
+            exit 1
+          fi

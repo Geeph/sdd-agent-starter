@@ -12,9 +12,11 @@ Click **"Use this template"** to start a new project — the conventions below c
 - **Orchestration:** a board/runtime (e.g. Multica) that mirrors GitHub Issues and
   dispatches work to executors.
 - **State:** GitHub — repo for artifacts, **Issues for the backlog (single source of
-  truth)**, CI as the automated gate, optional preview deploy for prototypes.
+  truth)**, CI as the automated gate.
 
-All agent rules live in [`AGENTS.md`](./AGENTS.md). Read that first.
+All agent rules live in [`AGENTS.md`](./AGENTS.md). Read that first. Each harness gets a thin
+pointer file (`CLAUDE.md`, `QWEN.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
+`.cursorrules`) so it loads the same rules; Codex and OpenCode read `AGENTS.md` natively.
 
 ## Layout
 
@@ -22,16 +24,21 @@ All agent rules live in [`AGENTS.md`](./AGENTS.md). Read that first.
 specs/
   _template/                # copy into specs/<version>/ to start a version
     spec.md                 #   what & why
-    design.md               #   UI/UX intent (design track only)
-    plan.md                 #   how it gets built → tasks
-    tasks.md                #   staging list before GitHub Issues
+    design.md               #   UI/UX intent (design track): a Figma link and/or a code prototype
+    plan.md                 #   how it gets built -> Issues (status lives in the Issues)
   v1/ …                     # one folder per version
-prototype/                  # runnable prototype app (design track); deployed to preview
+prototype/                  # OPTIONAL code prototype (only if you don't design in Figma)
 design/tokens/              # design tokens (colour/spacing/type) — optional
-.github/workflows/
-  ci.yml                    # lint/typecheck/test/build (Node/TS + Python); green on empty repo
-  preview.yml               # build prototype/ and publish a phone-viewable preview
+.github/
+  pull_request_template.md  # required PR description (linked Issue, sections, author/reviewer)
+  ISSUE_TEMPLATE/task.yml   # task issue form (scope + acceptance + track)
+  copilot-instructions.md   # -> AGENTS.md
+  workflows/
+    ci.yml                  # lint/typecheck/test/build (Node/TS + Python); green on an empty repo
+    pr-hygiene.yml          # every PR must link an Issue
+    preview.yml             # OPTIONAL code-prototype preview (Figma needs no deploy)
 AGENTS.md                   # single source of truth for agent behavior
+CLAUDE.md / QWEN.md / GEMINI.md / .cursorrules   # thin pointers -> AGENTS.md
 .gitignore
 README.md
 ```
@@ -58,34 +65,43 @@ spec.md ─▶ [SPEC GATE: you review] ─▶ plan.md ─▶ GitHub Issues
 4. CI runs (lint / typecheck / test / build). An independent agent reviews. You approve.
 5. Merge → close Issue → next task.
 
-Use this for back-end, library, CLI, or any work with no UI to get right first.
+Use this for back-end, library, CLI, or any work with no UI to settle first.
 
-### Flow B — with Design (spec → design → prototype → code)
+### Flow B — with Design (spec → design → code)
+
+`design.md` captures the UI intent; its **visual source** is a **Figma link** (default) or a
+**code prototype** under `prototype/` — never both. The design gate reviews whichever it is:
+for Figma you just open the share link on your phone; for a code prototype, its live preview.
+No production code is written until the design is approved.
 
 ```
-spec.md ─▶ [SPEC GATE] ─▶ design.md + prototype/
-   ─▶ preview URL (open on your phone) ─▶ [DESIGN GATE: review design + live preview]
+spec.md ─▶ [SPEC GATE] ─▶ design.md + Figma link  (or a code prototype/)
+   ─▶ [DESIGN GATE: review design.md + Figma link / live preview on the PR]
    ─▶ (then identical to Flow A) plan.md ─▶ Issues ─▶ implement ─▶ PR ─▶ CI ─▶ review ─▶ merge
 ```
 
 1. Commander writes `specs/v1/spec.md` → **you review** (spec gate).
-2. Commander writes `specs/v1/design.md` (flows, IA, visual direction, tokens, responsive
-   breakpoints, a11y target, per-screen acceptance). An executor builds the prototype under
-   `prototype/`.
-3. Each prototype PR deploys a **preview URL** (`preview.yml`). You open it on your phone and
-   review `design.md` + the live preview — the **design gate** — before any production code.
-4. Once design is approved, continue exactly like Flow A: `plan.md` → Issues → implement → PR →
-   CI → review → merge. The approved prototype is the reference.
+2. Commander writes `specs/v1/design.md` and links the **Figma** file. (For agent-generated UI
+   instead, an executor builds a **code prototype** under `prototype/` — that prototype is
+   itself a tracked Issue + light plan, so no code precedes its Issue.)
+3. **Design gate:** open the Figma link (or the prototype's live preview) on your phone and
+   review it against `design.md` — *before* any production code.
+4. Once approved, continue exactly like Flow A: `plan.md` → Issues → implement → PR → CI →
+   review → merge. The approved design is the reference.
 
 Use this whenever there's UI to settle before committing to full code.
+
+> Design intent (`design.md`, a Figma link) is **planning, not code** — the Commander writes it
+> up front, so the design phase doesn't deadlock against the "load plan + Issue before code"
+> rule. Only the implementation (and any code prototype) is code, and it follows that rule.
 
 ## One-time setup checklist
 
 - [ ] Protect `main`: require a PR + passing CI before merge (Settings → Rules / ruleset).
 - [ ] Confirm CI is green on the empty scaffold.
 - [ ] Point your orchestrator at this repo; set **GitHub Issues** as the backlog source of truth.
-- [ ] Keep any `CLAUDE.md` lean — shared rules belong in `AGENTS.md`.
-- [ ] **Design track only —** enable previews: either turn on GitHub Pages
-      (Settings → Pages → Source: *GitHub Actions*) for a single published preview, or connect
-      Vercel / Cloudflare Pages for per-PR URLs and add the token via `gh secret set`.
-- [ ] **Design track only —** create the `design` / `prototype` / `code` Issue labels.
+- [ ] Keep the harness pointer files (`CLAUDE.md`, …) thin — shared rules live in `AGENTS.md`.
+- [ ] **Design track —** link Figma in `design.md` (no infra needed). For a *code* prototype
+      preview, optionally enable GitHub Pages (Source: *GitHub Actions*) or connect
+      Vercel / Cloudflare and add the token via `gh secret set`.
+- [ ] Optional: make `pr-hygiene` a **required** check (add it to the `main` ruleset's status checks).

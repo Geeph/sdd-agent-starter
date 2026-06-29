@@ -1,16 +1,18 @@
 # AGENTS.md — Shared rules for all agents
 
 This file is the single source of truth for how agents work in this repository.
-Every harness (Claude Code, Codex, Qwen Code, DeepSeek, OpenCode, etc.) reads it.
+Every harness reads it — directly (Codex, OpenCode), via a thin pointer file
+(`CLAUDE.md`, `QWEN.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursorrules`), or
+fed by the orchestrator for models without a context-file convention (e.g. DeepSeek).
 Keep it lean. If a rule changes, change it here — not in per-tool config.
 
 ## Sources of truth (never duplicate state)
 
-- **Backlog & task status → GitHub Issues.** Authoritative. Do not maintain a second
-  task list anywhere.
+- **Backlog & task status → GitHub Issues.** Authoritative. Do not maintain a second task list
+  anywhere (`plan.md` / task lists are planning snapshots, not status).
 - **Product intent → `specs/<version>/spec.md` and `plan.md`.** Code must conform to these.
-- **UI/UX intent (design track) → `specs/<version>/design.md`.** The prototype and any
-  shipped UI must conform to it.
+- **UI/UX intent (design track) → `specs/<version>/design.md`** plus its visual source (a
+  linked Figma file or a code prototype). Shipped UI must conform to it.
 - **Execution / board tool (e.g. Multica) → mirrors GitHub Issues and runs the work.**
   It does NOT own the backlog. If the board and a GitHub Issue disagree, the **Issue wins**.
 
@@ -29,6 +31,11 @@ Keep it lean. If a rule changes, change it here — not in per-tool config.
 1. The relevant `specs/<version>/spec.md` and `plan.md` (plus `design.md` on the design track).
 2. Its GitHub Issue (scope + acceptance criteria).
 
+Writing `spec.md` / `design.md` (including linking a Figma file) is **planning, not code** — the
+Commander does it up front, so the design phase does not need a plan/Issue to exist yet.
+Everything that is **code** — including a code prototype — obeys the rule above: its Issue +
+plan come first.
+
 Read only what the task needs. Do not pull the whole repo into context.
 
 ## Task discipline
@@ -39,34 +46,36 @@ Read only what the task needs. Do not pull the whole repo into context.
 - Before claiming a task done, **all** of these must pass locally: lint, typecheck, tests, build.
   If you cannot make them pass, **stop and report a blocker on the Issue** — do not mark it done.
 
-## Design & prototype track (optional — Scenario 2/3)
+## Design track (optional — Scenario 2/3)
 
-Some projects need a design/prototype phase before full code. It reuses this same skeleton;
-only the deliverables and one extra gate change.
+Some projects need a design phase before full code. It reuses this skeleton; only the
+deliverables and one extra gate change.
 
 - **Design intent → `specs/<version>/design.md`:** user flows, information architecture,
   visual direction, component inventory, responsive breakpoints, accessibility target, and a
-  per-screen acceptance checklist. Authoritative for *what the UI must be*.
-- **Visual source of truth = the prototype app OR a linked Figma file — never both.** In an
-  agent pipeline the prototype is usually code (HTML / components under `prototype/`), because
-  models emit code, not Figma. If a human uses Figma, link it from `design.md`; do not
-  duplicate its state into the repo.
+  per-screen acceptance checklist. Authoritative for *what the UI must be*. Written by the
+  Commander — a planning artifact, not code.
+- **Visual source of truth = a linked Figma file OR a code prototype — never both:**
+  - **Figma** (human designer): link it from `design.md`. The "preview" is the Figma share
+    link itself — open it on a phone. No deploy or CI needed for the design gate.
+  - **Code prototype** (agent-generated UI): build it under `prototype/`. Because it is code,
+    it is a normal tracked task — its own Issue + light plan first. Its preview is a deployed
+    URL (`.github/workflows/preview.yml`, or Vercel/Cloudflare for per-PR URLs).
 - **Design tokens** (colour / spacing / type) live in one place (`design/tokens/` or the
   prototype's token module). No magic values scattered across components.
-- **Every prototype PR must produce a preview URL that opens on a phone** (see
-  `.github/workflows/preview.yml`). Reviewers look at the live preview, not screenshots.
-- Roles are unchanged: Commander writes `design.md`; an executor produces the prototype;
+- Roles unchanged: Commander writes `design.md`; an executor builds any code prototype;
   reviewer ≠ author still holds.
 
 ## Pull requests
 
-Open one PR per task. The description MUST contain:
+Open one PR per task, using the PR template (`.github/pull_request_template.md`). It MUST contain:
 
-- Linked Issue (`Closes #<n>`)
+- Linked Issue (`Closes #<n>`) — enforced by the `pr-hygiene` check
 - What was implemented
 - Test results
 - Anything not done / known gaps
 - Risks or assumptions
+- **Author model** and **Reviewer model** (reviewer ≠ author)
 
 Never push directly to `main`. `main` requires a PR with green CI and human approval.
 
@@ -74,10 +83,10 @@ Never push directly to `main`. `main` requires a PR with green CI and human appr
 
 1. **Spec gate (human):** spec/plan is reviewed *before* any code or design. Cheapest place to
    catch errors — take it seriously.
-2. **Design gate (human — design track only):** review `design.md` + the live preview *before*
-   writing production code. Same logic as the spec gate: catch UX errors when they are cheapest
-   to fix.
-3. **CI gate (automated):** lint / typecheck / test / build must be green.
+2. **Design gate (human — design track only):** review `design.md` + the Figma link (or the code
+   prototype's live preview) *before* writing production code. Same logic as the spec gate.
+3. **CI gate (automated):** lint / typecheck / test / build must be green. CI skips a stack that
+   is absent, but a present stack that defines no checks fails — it must not "check nothing".
 4. **Review gate:** independent agent review (reviewer ≠ author), then human approval on the PR.
 
 ## Honesty

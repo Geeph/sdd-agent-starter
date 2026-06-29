@@ -1,0 +1,49 @@
+name: Task
+description: One small, shippable unit of work (the backlog unit).
+title: "<concise task title>"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        GitHub Issues are the **backlog source of truth** (AGENTS.md). Keep each task small
+        (~0.5-2h) and independently shippable.
+  - type: dropdown
+    id: track
+    attributes:
+      label: Track
+      description: Which kind of work is this?
+      options:
+        - code
+        - design
+        - prototype
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What this task does — and explicitly what it does not.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: The checklist that must be true to close this Issue.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: input
+    id: refs
+    attributes:
+      label: Spec / design references
+      description: Link the specs/<version>/ files this implements.
+      placeholder: specs/v1/spec.md, specs/v1/design.md
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / dependencies
+      description: Anything that must land first, or risks.

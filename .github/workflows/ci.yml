@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+# Green on an empty scaffold: each job SKIPS when its stack is absent. But once a stack is
+# present, checks run for real and FAIL on error — nothing is swallowed. A present stack that
+# defines none of lint/typecheck/test/build fails, so CI can never "check nothing".
+
 jobs:
   node:
     name: Node / TypeScript
@@ -30,9 +34,30 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install
+      - name: Install (deterministic)
         if: steps.detect.outputs.present == 'true'
-        run: npm ci || npm install
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          else
+            echo "No lockfile — using 'npm install'. Commit a lockfile for reproducible CI."
+            npm install
+          fi
+
+      - name: Require at least one check to be defined
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          node -e '
+            const s = (require("./package.json").scripts) || {};
+            const want = ["lint", "typecheck", "test", "build"];
+            const have = want.filter((k) => s[k]);
+            if (have.length === 0) {
+              console.error("This Node project defines none of: " + want.join(", ") +
+                " — CI would check nothing. Define at least a test or build script (see AGENTS.md).");
+              process.exit(1);
+            }
+            console.log("Checks defined: " + have.join(", "));
+          '
 
       - name: Lint
         if: steps.detect.outputs.present == 'true'
@@ -71,17 +96,30 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install tooling
+      - name: Install
         if: steps.detect.outputs.present == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install ruff pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pyproject.toml ]; then pip install -e . || true; fi
+          # Editable install only when pyproject declares a real package (not just tool config).
+          if [ -f pyproject.toml ] && grep -Eq '^\[(build-system|project)\]' pyproject.toml; then
+            pip install -e .
+          fi
 
       - name: Lint (ruff)
         if: steps.detect.outputs.present == 'true'
         run: ruff check .
+
+      - name: Typecheck (mypy, if configured)
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          if [ -f mypy.ini ] || [ -f .mypy.ini ] || grep -Eqs '^\[tool\.mypy\]' pyproject.toml; then
+            pip install mypy
+            mypy .
+          else
+            echo "No mypy config — skipping typecheck. Add [tool.mypy] (or mypy.ini) to enable."
+          fi
 
       - name: Test (pytest)
         if: steps.detect.outputs.present == 'true'
@@ -90,7 +128,8 @@ jobs:
           pytest -q
           code=$?
           set -e
-          # exit 5 = "no tests collected" — fine for an empty scaffold
+          # exit 5 = "no tests collected" — allowed only while a project is still being
+          # scaffolded. Once you have code, add tests; AGENTS.md requires tests before "done".
           if [ "$code" = "0" ] || [ "$code" = "5" ]; then
             echo "Python tests OK (exit $code)."
             exit 0
